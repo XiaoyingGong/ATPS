@@ -1,11 +1,12 @@
 # author: 龚潇颖(Xiaoying Gong)
 # date： 2020/1/9 17:02  
 # IDE：PyCharm 
-# des: This is a implementation for ATP
+# des: This is a implementation for ATPS
 # input(s)：
 # output(s)：
 import numpy as np
-
+import matplotlib.pyplot as plt
+import utils
 # des:K_ij = U(u) = u^2 log u     the radial basis function of ATPS
 #     u_ij = ||x_i - x_j||
 
@@ -25,18 +26,64 @@ def radial_basis_function(x, y):
     y_tile = np.tile(y_tile, (1, N, 1))
 
     u = np.sqrt(np.sum((x_tile - y_tile) ** 2, axis=0)) # u is the Euclidean distance between x_tile and y_tile
-    r_b_f = (u**2)*np.log(u)
+    r_b_f = (u**2)*np.log(u + 0.00000001)
     return r_b_f
 
 # des(s): using ATPS to1
 # inputs(s): ita
 # output(s):
-def transform_points(fixed_points, mov_points):
-    transformed_mov_points = 0
-    transformation_param = 0
-    return transformed_mov_points, transformation_param
+def calculate_transformation_coefficient(fixed_points, mov_points, ita):
+    mov_N = len(mov_points)
+    K = radial_basis_function(mov_points, mov_points)
+    H = np.hstack((np.ones([mov_N, 1]), mov_points))
+    part_1_row_1 = np.hstack((K + ita * np.ones([mov_N, 1]), H))
+    part_1_row_2 = np.hstack((H.T, np.zeros([3, 3])))
+    part_1 = np.vstack((part_1_row_1, part_1_row_2))
+    part_1_inv = np.linalg.pinv(part_1)
+    part_2 = np.vstack((fixed_points, np.zeros([3, 2])))
+    transform_coefficient = np.dot(part_1_inv, part_2)
+    return transform_coefficient
 
-x = np.array([[1, 3], [2, 4]])
-y = np.array([[4, 5], [5, 6], [3, 5]])
 
-radial_basis_function(x, y)
+# des(s): using ATPS to1
+# inputs(s): ita
+# output(s):
+def transforming_points(mov_points, mov_point_inliers, transformation_coefficient):
+    mov_N = len(mov_points)
+    K = radial_basis_function(mov_points, mov_point_inliers)
+    H = np.hstack((np.ones([mov_N, 1]), mov_points))
+    transformed_mov_points = np.dot(np.hstack((K, H)), transformation_coefficient)
+    return transformed_mov_points
+
+
+if __name__ == "__main__":
+    import utils
+    img_r = "./data/img/81-r.jpg"
+    img_s = "./data/img/81-l.jpg"
+    kp_s, kp_r, des_s, des_r, img_s, img_r, resize_w, resize_h = \
+        utils.get_kps_deses.get_kps_deses(img_s, img_r, utils.constants.resize_img_w, utils.constants.resize_img_h)
+    pre_match_09_index = utils.sift_matching.get_matches_exist_kp(des_s, des_r, 0.9)
+    pre_match_07_index = utils.sift_matching.get_matches_exist_kp(des_s, des_r, 0.7)
+
+    kp_s_all = kp_s[pre_match_09_index[:, 0]]
+    kp_r_all = kp_r[pre_match_09_index[:, 1]]
+
+    kp_s_inlier = kp_s[pre_match_07_index[:, 0]]
+    kp_r_inlier = kp_r[pre_match_07_index[:, 1]]
+
+    for i in range(10):
+        plt.scatter(kp_r_all[:, 0], kp_r_all[:, 1], c='r', s=10)
+
+        transformation_coefficient = \
+            calculate_transformation_coefficient(kp_r_inlier, kp_s_inlier, 0.5)
+
+        kp_s_all = \
+            transforming_points(kp_s_all,  kp_s_inlier, transformation_coefficient)
+
+        plt.scatter(kp_s_all[:, 0], kp_s_all[:, 1], c='b', s=5)
+        _, delete_index = utils.utils.set_difference_2d(pre_match_09_index, pre_match_07_index)
+        kp_s_inlier = kp_s_all[delete_index]
+        print(kp_s_inlier)
+        plt.show()
+
+        plt.close()
